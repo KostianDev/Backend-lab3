@@ -7,6 +7,7 @@ import (
 
 	"bckndlab3/src/internal/config"
 	"bckndlab3/src/internal/database"
+	"bckndlab3/src/internal/migrations"
 )
 
 func main() {
@@ -25,6 +26,10 @@ func main() {
 		log.Fatalf("failed to unwrap database handle: %v", err)
 	}
 	defer sqlDB.Close()
+
+	if err := migrations.Run(db); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
+	}
 
 	gin.SetMode(cfg.GinMode)
 
