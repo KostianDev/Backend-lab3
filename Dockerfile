@@ -3,12 +3,10 @@
 FROM golang:1.25.3 AS builder
 WORKDIR /workspace
 
-COPY go.work ./
-COPY src/go.mod src/
-COPY src/go.sum src/
-COPY src/ src/
+COPY go.mod go.sum ./
+COPY src ./src
 
-RUN cd src && go build -o /workspace/bin/app ./cmd/app
+RUN go build -o /workspace/bin/app ./src/cmd/app
 
 FROM debian:bookworm-slim AS runtime
 
