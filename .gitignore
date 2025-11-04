@@ -1,0 +1,12 @@
+# Binaries
+/bin/
+/dist/
+
+# Environment and secrets
+.env
+*.local
+
+# Editor artifacts
+.idea/
+.vscode/
+.env.example
