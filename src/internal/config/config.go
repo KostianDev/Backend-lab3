@@ -62,15 +62,23 @@ func Load() (Config, error) {
 }
 
 func loadDatabaseConfig() (DatabaseConfig, error) {
-	dsn := getEnv("DATABASE_DSN", "")
-	if dsn == "" {
-		dsn = getEnv("DATABASE_URL", "")
+	dsnCandidates := []string{
+		os.Getenv("DATABASE_DSN"),
+		os.Getenv("DATABASE_URL"),
+		os.Getenv("RENDER_INTERNAL_DATABASE_URL"),
+		os.Getenv("RENDER_EXTERNAL_DATABASE_URL"),
 	}
+
+	var dsn string
+	for _, candidate := range dsnCandidates {
+		if candidate != "" {
+			dsn = candidate
+			break
+		}
+	}
+
 	if dsn == "" {
 		dsn = "postgres://backend:backend@localhost:5432/backend_lab3?sslmode=disable"
-	}
-	if dsn == "" {
-		return DatabaseConfig{}, errors.New("DATABASE_DSN or DATABASE_URL must not be empty")
 	}
 
 	maxOpen, err := getEnvInt("DB_MAX_OPEN_CONNS", 25)
