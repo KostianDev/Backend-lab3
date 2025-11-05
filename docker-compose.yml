@@ -1,18 +1,17 @@
 services:
   db:
-    image: mariadb:11.4
+    image: postgres:17
     container_name: lab3-db
     environment:
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
-      MARIADB_DATABASE: ${DB_NAME:?DB_NAME is required}
-      MARIADB_USER: ${DB_USER:?DB_USER is required}
-      MARIADB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME is required}
+      POSTGRES_USER: ${DB_USER:?DB_USER is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
     ports:
-      - "3306:3306"
+      - "${DB_PORT:-5432}:5432"
     volumes:
-      - db_data:/var/lib/mysql
+      - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:?DB_USER is required} -d ${DB_NAME:?DB_NAME is required}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,8 +24,8 @@ services:
       APP_NAME: ${APP_NAME:-backend-lab3}
       HTTP_PORT: ${HTTP_PORT:-8080}
       GIN_MODE: ${GIN_MODE:-release}
-      DATABASE_DSN: ${DB_USER:?DB_USER is required}:${DB_PASSWORD:?DB_PASSWORD is required}@tcp(db:${DB_PORT:-3306})/${DB_NAME:?DB_NAME is required}?parseTime=true&loc=Local&charset=utf8mb4
-      ALLOW_NEGATIVE_BALANCE: ${ALLOW_NEGATIVE_BALANCE:-false}
+      DATABASE_DSN: "postgres://${DB_USER:?DB_USER is required}:${DB_PASSWORD:?DB_PASSWORD is required}@db:${DB_PORT:-5432}/${DB_NAME:?DB_NAME is required}?sslmode=disable"
+      ALLOW_NEGATIVE_BALANCE: '${ALLOW_NEGATIVE_BALANCE:-false}'
     ports:
       - "8080:8080"
     depends_on:

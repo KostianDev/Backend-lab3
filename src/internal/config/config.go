@@ -33,9 +33,17 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("load .env: %w", err)
 	}
 
+	httpPort := os.Getenv("HTTP_PORT")
+	if httpPort == "" {
+		httpPort = os.Getenv("PORT")
+	}
+	if httpPort == "" {
+		httpPort = "8080"
+	}
+
 	cfg := Config{
 		AppName:              getEnv("APP_NAME", "backend-lab3"),
-		HTTPPort:             getEnv("HTTP_PORT", "8080"),
+		HTTPPort:             httpPort,
 		GinMode:              getEnv("GIN_MODE", "debug"),
 		AllowNegativeBalance: getEnvBool("ALLOW_NEGATIVE_BALANCE", false),
 	}
@@ -54,9 +62,15 @@ func Load() (Config, error) {
 }
 
 func loadDatabaseConfig() (DatabaseConfig, error) {
-	dsn := getEnv("DATABASE_DSN", "backend:backend@tcp(localhost:3306)/backend_lab3?parseTime=true&loc=Local&charset=utf8mb4")
+	dsn := getEnv("DATABASE_DSN", "")
 	if dsn == "" {
-		return DatabaseConfig{}, errors.New("DATABASE_DSN must not be empty")
+		dsn = getEnv("DATABASE_URL", "")
+	}
+	if dsn == "" {
+		dsn = "postgres://backend:backend@localhost:5432/backend_lab3?sslmode=disable"
+	}
+	if dsn == "" {
+		return DatabaseConfig{}, errors.New("DATABASE_DSN or DATABASE_URL must not be empty")
 	}
 
 	maxOpen, err := getEnvInt("DB_MAX_OPEN_CONNS", 25)

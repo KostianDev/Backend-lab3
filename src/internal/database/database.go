@@ -3,16 +3,16 @@ package database
 import (
 	"fmt"
 
-	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
 	"bckndlab3/src/internal/config"
 )
 
-// Connect establishes a GORM connection to MariaDB using provided configuration.
+// Connect establishes a GORM connection to PostgreSQL using provided configuration.
 func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
-	dialector := mysql.Open(cfg.DSN)
+	dialector := postgres.Open(cfg.DSN)
 
 	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Warn),

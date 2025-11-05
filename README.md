@@ -1,6 +1,6 @@
-# Backend Lab 3 - Income Tracking Service
+# Backend Lab 3 – Income Tracking Service
 
-This repository contains the third laboratory assignment for the "Технології серверного програмного забезпечення" course. The project is implemented in Go 1.25.3 with the Gin framework and MariaDB. Variant **3 (Облік доходів)** is selected.
+This repository contains the third laboratory assignment for the "Технології серверного програмного забезпечення" course. The project is implemented in Go 1.25.3 with the Gin framework and PostgreSQL. Variant **3 (Облік доходів)** is selected, which introduces per-user income tracking and balance control.
 
 ## Contents
 - [Features](#features)
@@ -14,12 +14,12 @@ This repository contains the third laboratory assignment for the "Техноло
 - [Endpoints](#endpoints)
 - [Testing](#testing)
 - [Variant Justification](#variant-justification)
-- [Makefile Helpers](#makefile-helpers)
+- [Render Deployment](#render-deployment)
 - [Useful Commands](#useful-commands)
 
 ## Features
 - Gin-based HTTP API with request validation and structured error handling.
-- GORM ORM integration with MariaDB (runtime) and SQLite (tests).
+- GORM ORM integration with PostgreSQL (runtime) and SQLite (tests).
 - Authentication service creating users and default accounts with hashed passwords.
 - Account service that credits incomes, debits expenses, enforces optional overdraft policy, and tracks balances in cents.
 - Centralised error middleware translating domain errors to JSON envelopes.
@@ -48,8 +48,8 @@ The application starts from `src/cmd/app/main.go`, reading configuration, establ
 
 ### Configuration
 Two example environment files are provided:
-- `.env.example` - configuration for running the Go binary locally (points to localhost MariaDB).
-- `.env.docker.example` - configuration for Docker Compose deployment.
+- `.env.example` – configuration for running the Go binary locally (points to localhost PostgreSQL).
+- `.env.docker.example` – configuration for Docker Compose deployment.
 
 Copy one of the examples and adjust secrets/ports as needed:
 ```bash
@@ -59,7 +59,7 @@ cp .env.docker.example .env
 ```
 
 ### Running Locally
-1. Ensure MariaDB is running with credentials matching `.env`.
+1. Ensure PostgreSQL is running with credentials matching `.env`.
 2. Install dependencies and build:
    ```bash
    go mod tidy
@@ -124,12 +124,24 @@ Key coverage areas:
 ## Variant Justification
 Group number modulo 3 equals 0, hence variant **3 - Облік доходів**. The implementation introduces per-user accounts (`models.Account`) and income tracking (`models.Income`), automatically debiting expenses while respecting an optional negative balance policy.
 
+## Render Deployment
+The service is deployed on [Render](https://render.com/) as a Web Service with an attached managed PostgreSQL instance. Supply the following environment variables in the Render dashboard:
+
+| Variable | Suggested Value |
+|----------|-----------------|
+| `DATABASE_URL` | Copy the External Connection string from the Render PostgreSQL service (includes user, password, host, port, database, and `sslmode=require`). |
+| `APP_NAME` | `backend-lab3` |
+| `GIN_MODE` | `release` |
+| `ALLOW_NEGATIVE_BALANCE` | `false` or `true` depending on desired policy |
+
+> Render automatically exposes `PORT`; the application reads `HTTP_PORT`, so set `HTTP_PORT` to `$PORT` in the environment. Ensure the Render service build command runs `go build ./src/cmd/app` (or use this repository's Dockerfile) and the start command executes `./app`.
+
 ## Useful Commands
 - `go mod tidy` - ensure dependencies are up to date.
 - `docker compose logs -f app` - tail application logs.
-- `docker compose exec db mariadb -ubackend -p` - connect to the MariaDB instance.
+- `docker compose exec db psql -U ${DB_USER} -d ${DB_NAME}` - connect to the PostgreSQL instance.
 - `curl http://localhost:8080/api/v1/accounts/1/balance` - sample API call.
 - `go test ./src/internal/storage -run TestAccountService` - run targeted tests.
 
 ---
-Released under tag [`v1.0.0`](https://github.com/KostianDev/Backend-lab3/releases/tag/v1.0.0) for laboratory evaluation.
+Released under tag [`v3.0.0`](https://github.com/KostianDev/Backend-lab3/releases/tag/v3.0.0) for laboratory evaluation.
