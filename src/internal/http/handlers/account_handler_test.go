@@ -19,6 +19,7 @@ import (
 	handlers "bckndlab3/src/internal/http/handlers"
 	"bckndlab3/src/internal/http/router"
 	"bckndlab3/src/internal/migrations"
+	"bckndlab3/src/internal/models"
 	"bckndlab3/src/internal/storage"
 )
 
@@ -175,4 +176,111 @@ func TestAccountHandlerIncomeExpenseFlow(t *testing.T) {
 	account, err := accountService.GetAccountByUserID(ctx, user.ID)
 	require.NoError(t, err)
 	require.Equal(t, int64(8050), account.BalanceCents)
+}
+
+func TestAccountHandlerCreateIncomeValidationError(t *testing.T) {
+	_, authService, _, engine, _ := setupHandlerTest(t)
+
+	ctx := context.Background()
+	user, err := authService.RegisterUser(ctx, "invalid-income@example.com", "password123", "uah")
+	require.NoError(t, err)
+
+	body, err := json.Marshal(map[string]any{
+		"source": "Gift",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/incomes", user.ID), bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	engine.ServeHTTP(res, req)
+	require.Equal(t, http.StatusBadRequest, res.Code)
+
+	var payload errorEnvelope
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &payload))
+	require.Equal(t, "validation_error", payload.Error.Code)
+}
+
+func TestAccountHandlerGetBalanceNotFound(t *testing.T) {
+	_, _, _, engine, _ := setupHandlerTest(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/999/balance", nil)
+	res := httptest.NewRecorder()
+
+	engine.ServeHTTP(res, req)
+	require.Equal(t, http.StatusNotFound, res.Code)
+
+	var payload errorEnvelope
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &payload))
+	require.Equal(t, "not_found", payload.Error.Code)
+}
+
+func TestAccountHandlerListIncomesRespectLimit(t *testing.T) {
+	_, authService, accountService, engine, frozen := setupHandlerTest(t)
+
+	ctx := context.Background()
+	user, err := authService.RegisterUser(ctx, "limit@example.com", "password123", "uah")
+	require.NoError(t, err)
+
+	amounts := []int64{10000, 20000, 30000}
+	for i, cents := range amounts {
+		income := &models.Income{
+			AmountCents: cents,
+			Source:      fmt.Sprintf("src-%d", i),
+			ReceivedAt:  frozen.Add(time.Duration(i) * time.Hour),
+		}
+		_, _, err := accountService.CreditIncome(ctx, user.ID, income)
+		require.NoError(t, err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/incomes?limit=2", user.ID), nil)
+	res := httptest.NewRecorder()
+
+	engine.ServeHTTP(res, req)
+	require.Equal(t, http.StatusOK, res.Code)
+
+	var payload []struct {
+		Amount float64 `json:"amount"`
+	}
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &payload))
+	require.Len(t, payload, 2)
+	require.InDelta(t, 300.0, payload[0].Amount, 0.001)
+	require.InDelta(t, 200.0, payload[1].Amount, 0.001)
+}
+
+func TestAccountHandlerListExpensesRespectLimit(t *testing.T) {
+	_, authService, accountService, engine, frozen := setupHandlerTest(t)
+
+	ctx := context.Background()
+	user, err := authService.RegisterUser(ctx, "limit-expenses@example.com", "password123", "uah")
+	require.NoError(t, err)
+
+	_, _, err = accountService.CreditIncome(ctx, user.ID, &models.Income{AmountCents: 100000, Source: "seed", ReceivedAt: frozen})
+	require.NoError(t, err)
+
+	costs := []int64{1000, 2000, 3000}
+	for i, cents := range costs {
+		expense := &models.Expense{
+			AmountCents: cents,
+			Category:    fmt.Sprintf("cat-%d", i),
+			IncurredAt:  frozen.Add(time.Duration(i) * time.Hour),
+		}
+		_, _, err := accountService.DebitExpense(ctx, user.ID, expense)
+		require.NoError(t, err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/expenses?limit=2", user.ID), nil)
+	res := httptest.NewRecorder()
+
+	engine.ServeHTTP(res, req)
+	require.Equal(t, http.StatusOK, res.Code)
+
+	var payload []struct {
+		Amount float64 `json:"amount"`
+	}
+	require.NoError(t, json.Unmarshal(res.Body.Bytes(), &payload))
+	require.Len(t, payload, 2)
+	require.InDelta(t, 30.0, payload[0].Amount, 0.001)
+	require.InDelta(t, 20.0, payload[1].Amount, 0.001)
 }

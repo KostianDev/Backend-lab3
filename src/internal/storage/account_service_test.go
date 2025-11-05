@@ -95,3 +95,67 @@ func TestAccountServiceDebitExpenseAllowsNegativeBalance(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(-5000), balance)
 }
+
+func TestAccountServiceCreditIncomeRejectsNonPositiveAmount(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	auth := NewAuthService(db)
+	user, err := auth.RegisterUser(ctx, "reject-income@example.com", "strongpass", "usd")
+	require.NoError(t, err)
+
+	svc := NewAccountService(db, false)
+
+	_, _, err = svc.CreditIncome(ctx, user.ID, &models.Income{AmountCents: 0, Source: "Gift"})
+	require.ErrorIs(t, err, ErrPreconditionFailed)
+
+	account, err := svc.GetAccountByUserID(ctx, user.ID)
+	require.NoError(t, err)
+
+	incomes, err := svc.ListIncomes(ctx, account.ID, 10)
+	require.NoError(t, err)
+	require.Empty(t, incomes)
+}
+
+func TestAccountServiceDebitExpenseRejectsNonPositiveAmount(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	auth := NewAuthService(db)
+	user, err := auth.RegisterUser(ctx, "reject-expense@example.com", "strongpass", "usd")
+	require.NoError(t, err)
+
+	svc := NewAccountService(db, false)
+
+	_, _, err = svc.DebitExpense(ctx, user.ID, &models.Expense{AmountCents: 0, Category: "Misc"})
+	require.ErrorIs(t, err, ErrPreconditionFailed)
+
+	account, err := svc.GetAccountByUserID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), account.BalanceCents)
+
+	expenses, err := svc.ListExpenses(ctx, account.ID, 10)
+	require.NoError(t, err)
+	require.Empty(t, expenses)
+}
+
+func TestAccountServiceSetDefaultCurrencyUpdatesAccount(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	auth := NewAuthService(db)
+	user, err := auth.RegisterUser(ctx, "currency@example.com", "strongpass", "usd")
+	require.NoError(t, err)
+
+	svc := NewAccountService(db, false)
+
+	require.NoError(t, svc.SetDefaultCurrency(ctx, user.ID, "pln"))
+
+	var refreshedUser models.User
+	require.NoError(t, db.WithContext(ctx).First(&refreshedUser, user.ID).Error)
+	require.Equal(t, "PLN", refreshedUser.DefaultCurrency)
+
+	account, err := svc.GetAccountByUserID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "PLN", account.CurrencyISOCode)
+}
