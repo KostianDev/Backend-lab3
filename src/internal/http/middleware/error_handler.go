@@ -48,6 +48,9 @@ func mapError(err error) (int, gin.H) {
 	case errors.Is(err, storage.ErrConflict):
 		status = http.StatusConflict
 		code = "conflict"
+	case errors.Is(err, storage.ErrInsufficientFunds):
+		status = http.StatusBadRequest
+		code = "insufficient_funds"
 	case errors.Is(err, storage.ErrPreconditionFailed):
 		status = http.StatusBadRequest
 		code = "precondition_failed"

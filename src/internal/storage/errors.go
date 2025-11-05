@@ -9,4 +9,6 @@ var (
 	ErrConflict = errors.New("conflict")
 	// ErrPreconditionFailed indicates a business rule guard prevented an operation.
 	ErrPreconditionFailed = errors.New("precondition failed")
+	// ErrInsufficientFunds indicates an expense would drive balance below zero while forbidden.
+	ErrInsufficientFunds = errors.New("insufficient funds")
 )

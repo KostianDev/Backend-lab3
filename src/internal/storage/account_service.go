@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -30,6 +31,12 @@ func NewAccountService(db *gorm.DB, allowNegativeBalance bool) *AccountService {
 
 // CreditIncome credits an income amount to a user's account.
 func (s *AccountService) CreditIncome(ctx context.Context, userID uint, income *models.Income) (*models.Income, int64, error) {
+	if income.AmountCents <= 0 {
+		return nil, 0, fmt.Errorf("%w: income amount must be positive", ErrPreconditionFailed)
+	}
+	if income.ReceivedAt.IsZero() {
+		income.ReceivedAt = time.Now().UTC()
+	}
 	income.UserID = userID
 
 	var updatedBalance int64
@@ -60,6 +67,12 @@ func (s *AccountService) CreditIncome(ctx context.Context, userID uint, income *
 
 // DebitExpense debits an expense amount from a user's account, respecting overdraft policy.
 func (s *AccountService) DebitExpense(ctx context.Context, userID uint, expense *models.Expense) (*models.Expense, int64, error) {
+	if expense.AmountCents <= 0 {
+		return nil, 0, fmt.Errorf("%w: expense amount must be positive", ErrPreconditionFailed)
+	}
+	if expense.IncurredAt.IsZero() {
+		expense.IncurredAt = time.Now().UTC()
+	}
 	expense.UserID = userID
 	var updatedBalance int64
 
@@ -78,7 +91,7 @@ func (s *AccountService) DebitExpense(ctx context.Context, userID uint, expense 
 		}
 
 		if !s.allowNegativeBalance && newBalance < 0 {
-			return fmt.Errorf("%w: insufficient funds", ErrPreconditionFailed)
+			return ErrInsufficientFunds
 		}
 
 		if err := s.accounts.CreateExpense(ctx, tx, expense); err != nil {
@@ -102,6 +115,12 @@ func (s *AccountService) SetDefaultCurrency(ctx context.Context, userID uint, cu
 		Where("id = ?", userID).
 		Update("default_currency", currency).Error
 	if err != nil {
+		return translateError(err)
+	}
+
+	if err := s.db.WithContext(ctx).Model(&models.Account{}).
+		Where("user_id = ?", userID).
+		Update("currency_iso_code", currency).Error; err != nil {
 		return translateError(err)
 	}
 	return nil
