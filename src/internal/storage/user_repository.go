@@ -45,6 +45,18 @@ func (r *UserRepository) GetByID(ctx context.Context, id uint) (*models.User, er
 	return &user, nil
 }
 
+// DeleteByID removes a user and cascades related aggregates.
+func (r *UserRepository) DeleteByID(ctx context.Context, id uint) error {
+	result := r.db.WithContext(ctx).Delete(&models.User{}, id)
+	if err := result.Error; err != nil {
+		return translateError(err)
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func translateError(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound

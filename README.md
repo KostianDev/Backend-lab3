@@ -21,6 +21,7 @@ This repository contains the third laboratory assignment for the "Техноло
 - Gin-based HTTP API with request validation and structured error handling.
 - GORM ORM integration with PostgreSQL (runtime) and SQLite (tests).
 - Authentication service creating users and default accounts with hashed passwords.
+- User deletion endpoint with cascading cleanup of accounts, incomes, and expenses.
 - Account service that credits incomes, debits expenses, enforces optional overdraft policy, and tracks balances in cents.
 - Centralised error middleware translating domain errors to JSON envelopes.
 - Migrations managed via dedicated package executed on startup.
@@ -103,6 +104,7 @@ cp .env.docker.example .env
 | GET    | `/healthz`                            | Liveness probe                           |
 | POST   | `/api/v1/auth/register`               | Register a new user                      |
 | POST   | `/api/v1/auth/login`                  | Authenticate user credentials            |
+| DELETE | `/api/v1/auth/{userID}`               | Delete a user and owned financial data   |
 | POST   | `/api/v1/accounts/{userID}/incomes`   | Credit an income to the user account     |
 | POST   | `/api/v1/accounts/{userID}/expenses`  | Debit an expense from the user account   |
 | GET    | `/api/v1/accounts/{userID}/balance`   | Retrieve current balance                 |

@@ -72,6 +72,11 @@ func (s *AuthService) Authenticate(ctx context.Context, email, password string) 
 	return user, nil
 }
 
+// DeleteUser removes a user and all owned data.
+func (s *AuthService) DeleteUser(ctx context.Context, userID uint) error {
+	return s.users.DeleteByID(ctx, userID)
+}
+
 func hashPassword(password string) string {
 	sum := sha256.Sum256([]byte(password))
 	return hex.EncodeToString(sum[:])

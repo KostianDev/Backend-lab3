@@ -22,6 +22,7 @@ func NewAuthHandler(service *storage.AuthService) *AuthHandler {
 func (h *AuthHandler) RegisterRoutes(router *gin.RouterGroup) {
 	router.POST("/register", h.Register)
 	router.POST("/login", h.Login)
+	router.DELETE("/:userID", h.Delete)
 }
 
 // Register creates a new user.
@@ -55,4 +56,42 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, responses.NewUserResponse(user))
+}
+
+// Delete removes a user by identifier.
+func (h *AuthHandler) Delete(c *gin.Context) {
+	userID, err := requests.ParseUintParam(c, "userID")
+	if err != nil {
+		c.Error(responses.NewValidationError(err))
+		return
+	}
+
+	var req requests.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(responses.NewValidationError(err))
+		return
+	}
+
+	authenticated, err := h.AuthService.Authenticate(c.Request.Context(), req.Email, req.Password)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+
+	if authenticated.ID != userID {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"code":    "forbidden",
+				"message": "cannot delete another user",
+			},
+		})
+		return
+	}
+
+	if err := h.AuthService.DeleteUser(c.Request.Context(), userID); err != nil {
+		c.Error(err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
