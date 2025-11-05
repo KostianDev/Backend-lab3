@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgconn"
+	sqlite3 "github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 
 	"bckndlab3/src/internal/models"
@@ -63,6 +65,22 @@ func translateError(err error) error {
 	}
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return ErrConflict
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505":
+			return ErrConflict
+		case "23503":
+			return ErrPreconditionFailed
+		}
+	}
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		switch sqliteErr.ExtendedCode {
+		case sqlite3.ErrConstraintUnique, sqlite3.ErrConstraintPrimaryKey:
+			return ErrConflict
+		}
 	}
 	return fmt.Errorf("storage: %w", err)
 }

@@ -56,3 +56,16 @@ func TestAuthServiceDeleteUser(t *testing.T) {
 	_, err = accountRepo.GetByUserID(ctx, user.ID)
 	require.ErrorIs(t, err, ErrNotFound)
 }
+
+func TestAuthServiceRegisterDuplicateEmail(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	service := NewAuthService(db)
+
+	_, err := service.RegisterUser(ctx, "dup@example.com", "strongpass", "usd")
+	require.NoError(t, err)
+
+	_, err = service.RegisterUser(ctx, "dup@example.com", "anotherpass", "usd")
+	require.ErrorIs(t, err, ErrConflict)
+}

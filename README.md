@@ -103,8 +103,8 @@ cp .env.docker.example .env
 |--------|---------------------------------------|------------------------------------------|
 | GET    | `/healthz`                            | Liveness probe                           |
 | POST   | `/api/v1/auth/register`               | Register a new user                      |
-| POST   | `/api/v1/auth/login`                  | Authenticate user credentials            |
-| DELETE | `/api/v1/auth/{userID}`               | Delete a user and owned financial data   |
+| POST   | `/api/v1/auth/login`                  | Authenticate user and return session token |
+| DELETE | `/api/v1/auth/{userID}`               | Delete a user (requires email/password in body) |
 | POST   | `/api/v1/accounts/{userID}/incomes`   | Credit an income to the user account     |
 | POST   | `/api/v1/accounts/{userID}/expenses`  | Debit an expense from the user account   |
 | GET    | `/api/v1/accounts/{userID}/balance`   | Retrieve current balance                 |
@@ -112,6 +112,18 @@ cp .env.docker.example .env
 | GET    | `/api/v1/accounts/{userID}/expenses`  | List expenses (optional `limit` query)   |
 
 All payloads are documented in `internal/http/requests` and `internal/http/responses` packages.
+
+Example login response:
+```json
+{
+   "token": "<random-hex>",
+   "user": {
+      "id": 1,
+      "email": "user@example.com",
+      "default_currency": "USD"
+   }
+}
+```
 
 ## Testing
 Tests rely on SQLite and testify. Run the suite with:
