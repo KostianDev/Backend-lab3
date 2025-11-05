@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -12,21 +14,25 @@ import (
 
 // AuthService handles user creation and credential verification.
 type AuthService struct {
-	db       *gorm.DB
-	users    *UserRepository
-	accounts *AccountRepository
+	db    *gorm.DB
+	users *UserRepository
 }
 
 func NewAuthService(db *gorm.DB) *AuthService {
 	return &AuthService{
-		db:       db,
-		users:    NewUserRepository(db),
-		accounts: NewAccountRepository(db),
+		db:    db,
+		users: NewUserRepository(db),
 	}
 }
 
 // RegisterUser creates a user, hashes the password, and ensures an account exists.
 func (s *AuthService) RegisterUser(ctx context.Context, email, password, defaultCurrency string) (*models.User, error) {
+	if defaultCurrency == "" {
+		defaultCurrency = "UAH"
+	} else {
+		defaultCurrency = strings.ToUpper(defaultCurrency)
+	}
+
 	hashed := hashPassword(password)
 	user := &models.User{
 		Email:           email,
@@ -38,11 +44,10 @@ func (s *AuthService) RegisterUser(ctx context.Context, email, password, default
 		if err := tx.WithContext(ctx).Create(user).Error; err != nil {
 			return translateError(err)
 		}
-		account := &models.Account{
+		if err := tx.WithContext(ctx).Create(&models.Account{
 			UserID:          user.ID,
 			CurrencyISOCode: user.DefaultCurrency,
-		}
-		if err := tx.WithContext(ctx).Create(account).Error; err != nil {
+		}).Error; err != nil {
 			return translateError(err)
 		}
 		return nil
@@ -62,7 +67,7 @@ func (s *AuthService) Authenticate(ctx context.Context, email, password string) 
 	}
 	expected := hashPassword(password)
 	if user.PasswordHash != expected {
-		return nil, ErrPreconditionFailed
+		return nil, fmt.Errorf("%w: invalid credentials", ErrPreconditionFailed)
 	}
 	return user, nil
 }

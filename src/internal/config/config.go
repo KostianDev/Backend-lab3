@@ -12,10 +12,11 @@ import (
 
 // Config aggregates application-level configuration sourced from environment variables.
 type Config struct {
-	AppName  string
-	HTTPPort string
-	GinMode  string
-	Database DatabaseConfig
+	AppName              string
+	HTTPPort             string
+	GinMode              string
+	AllowNegativeBalance bool
+	Database             DatabaseConfig
 }
 
 // DatabaseConfig captures connection-related settings for the relational database.
@@ -33,9 +34,10 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		AppName:  getEnv("APP_NAME", "backend-lab3"),
-		HTTPPort: getEnv("HTTP_PORT", "8080"),
-		GinMode:  getEnv("GIN_MODE", "debug"),
+		AppName:              getEnv("APP_NAME", "backend-lab3"),
+		HTTPPort:             getEnv("HTTP_PORT", "8080"),
+		GinMode:              getEnv("GIN_MODE", "debug"),
+		AllowNegativeBalance: getEnvBool("ALLOW_NEGATIVE_BALANCE", false),
 	}
 
 	if cfg.HTTPPort == "" {
@@ -112,4 +114,16 @@ func getEnvDuration(key string, fallback time.Duration) (time.Duration, error) {
 		return 0, err
 	}
 	return value, nil
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	valueStr, ok := os.LookupEnv(key)
+	if !ok || valueStr == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(valueStr)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }

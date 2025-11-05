@@ -7,7 +7,11 @@ import (
 
 	"bckndlab3/src/internal/config"
 	"bckndlab3/src/internal/database"
+	"bckndlab3/src/internal/http/handlers"
+	"bckndlab3/src/internal/http/router"
 	"bckndlab3/src/internal/migrations"
+	"bckndlab3/src/internal/services"
+	"bckndlab3/src/internal/storage"
 )
 
 func main() {
@@ -33,14 +37,20 @@ func main() {
 
 	gin.SetMode(cfg.GinMode)
 
-	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	authService := storage.NewAuthService(db)
+	accountService := storage.NewAccountService(db, cfg.AllowNegativeBalance)
 
-	router.GET("/healthz", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+	timeProvider := services.SystemTimeProvider{}
+
+	authHandler := handlers.NewAuthHandler(authService)
+	accountHandler := handlers.NewAccountHandler(accountService, timeProvider)
+
+	engine := router.New(router.Dependencies{
+		Auth:    authHandler,
+		Account: accountHandler,
 	})
 
-	if err := router.Run(":" + cfg.HTTPPort); err != nil {
+	if err := engine.Run(":" + cfg.HTTPPort); err != nil {
 		log.Fatalf("failed to start HTTP server: %v", err)
 	}
 }

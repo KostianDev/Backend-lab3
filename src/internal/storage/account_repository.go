@@ -49,8 +49,12 @@ func (r *AccountRepository) AdjustBalance(ctx context.Context, tx *gorm.DB, acco
 
 	tx = tx.WithContext(ctx)
 
-	if err := tx.Exec("UPDATE accounts SET balance_cents = balance_cents + ? WHERE id = ?", delta, accountID).Error; err != nil {
+	result := tx.Exec("UPDATE accounts SET balance_cents = balance_cents + ? WHERE id = ?", delta, accountID)
+	if err := result.Error; err != nil {
 		return 0, translateError(err)
+	}
+	if result.RowsAffected == 0 {
+		return 0, ErrNotFound
 	}
 
 	var row balanceRow

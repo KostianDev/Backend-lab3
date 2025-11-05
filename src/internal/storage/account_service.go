@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -11,18 +13,18 @@ import (
 
 // AccountService encapsulates transactional account operations.
 type AccountService struct {
-	db         *gorm.DB
-	accounts   *AccountRepository
-	users      *UserRepository
-	allowDebit bool
+	db                   *gorm.DB
+	accounts             *AccountRepository
+	users                *UserRepository
+	allowNegativeBalance bool
 }
 
-func NewAccountService(db *gorm.DB, allowDebit bool) *AccountService {
+func NewAccountService(db *gorm.DB, allowNegativeBalance bool) *AccountService {
 	return &AccountService{
-		db:         db,
-		accounts:   NewAccountRepository(db),
-		users:      NewUserRepository(db),
-		allowDebit: allowDebit,
+		db:                   db,
+		accounts:             NewAccountRepository(db),
+		users:                NewUserRepository(db),
+		allowNegativeBalance: allowNegativeBalance,
 	}
 }
 
@@ -75,8 +77,8 @@ func (s *AccountService) DebitExpense(ctx context.Context, userID uint, expense 
 			return err
 		}
 
-		if !s.allowDebit && newBalance < 0 {
-			return ErrPreconditionFailed
+		if !s.allowNegativeBalance && newBalance < 0 {
+			return fmt.Errorf("%w: insufficient funds", ErrPreconditionFailed)
 		}
 
 		if err := s.accounts.CreateExpense(ctx, tx, expense); err != nil {
@@ -95,6 +97,7 @@ func (s *AccountService) DebitExpense(ctx context.Context, userID uint, expense 
 
 // SetDefaultCurrency updates a user's default currency.
 func (s *AccountService) SetDefaultCurrency(ctx context.Context, userID uint, currency string) error {
+	currency = strings.ToUpper(currency)
 	err := s.db.WithContext(ctx).Model(&models.User{}).
 		Where("id = ?", userID).
 		Update("default_currency", currency).Error
@@ -116,11 +119,26 @@ func (s *AccountService) EnsureAccount(ctx context.Context, userID uint, currenc
 
 	account = &models.Account{
 		UserID:          userID,
-		CurrencyISOCode: currency,
+		CurrencyISOCode: strings.ToUpper(currency),
 	}
 
 	if err := s.db.WithContext(ctx).Create(account).Error; err != nil {
 		return nil, translateError(err)
 	}
 	return account, nil
+}
+
+// GetAccountByUserID fetches an account by user identifier.
+func (s *AccountService) GetAccountByUserID(ctx context.Context, userID uint) (*models.Account, error) {
+	return s.accounts.GetByUserID(ctx, userID)
+}
+
+// ListIncomes retrieves a slice of income records for the account.
+func (s *AccountService) ListIncomes(ctx context.Context, accountID uint, limit int) ([]models.Income, error) {
+	return s.accounts.ListIncomes(ctx, accountID, limit)
+}
+
+// ListExpenses retrieves a slice of expense records for the account.
+func (s *AccountService) ListExpenses(ctx context.Context, accountID uint, limit int) ([]models.Expense, error) {
+	return s.accounts.ListExpenses(ctx, accountID, limit)
 }
