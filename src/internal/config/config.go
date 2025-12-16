@@ -17,6 +17,13 @@ type Config struct {
 	GinMode              string
 	AllowNegativeBalance bool
 	Database             DatabaseConfig
+	JWT                  JWTConfig
+}
+
+// JWTConfig holds settings for JSON Web Token authentication.
+type JWTConfig struct {
+	SecretKey     string
+	TokenDuration time.Duration
 }
 
 // DatabaseConfig captures connection-related settings for the relational database.
@@ -57,6 +64,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.Database = dbCfg
+
+	jwtCfg, err := loadJWTConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.JWT = jwtCfg
 
 	return cfg, nil
 }
@@ -148,4 +161,21 @@ func getEnvBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
+}
+
+func loadJWTConfig() (JWTConfig, error) {
+	secret := getEnv("JWT_SECRET_KEY", "")
+	if secret == "" {
+		return JWTConfig{}, errors.New("JWT_SECRET_KEY must not be empty")
+	}
+
+	duration, err := getEnvDuration("JWT_TOKEN_DURATION", 24*time.Hour)
+	if err != nil {
+		return JWTConfig{}, fmt.Errorf("parse JWT_TOKEN_DURATION: %w", err)
+	}
+
+	return JWTConfig{
+		SecretKey:     secret,
+		TokenDuration: duration,
+	}, nil
 }
