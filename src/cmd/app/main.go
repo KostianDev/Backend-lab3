@@ -37,17 +37,19 @@ func main() {
 
 	gin.SetMode(cfg.GinMode)
 
+	jwtService := storage.NewJWTService(cfg.JWT.SecretKey, cfg.JWT.TokenDuration)
 	authService := storage.NewAuthService(db)
 	accountService := storage.NewAccountService(db, cfg.AllowNegativeBalance)
 
 	timeProvider := services.SystemTimeProvider{}
 
-	authHandler := handlers.NewAuthHandler(authService)
+	authHandler := handlers.NewAuthHandler(authService, jwtService)
 	accountHandler := handlers.NewAccountHandler(accountService, timeProvider)
 
 	engine := router.New(router.Dependencies{
-		Auth:    authHandler,
-		Account: accountHandler,
+		Auth:       authHandler,
+		Account:    accountHandler,
+		JWTService: jwtService,
 	})
 
 	if err := engine.Run(":" + cfg.HTTPPort); err != nil {

@@ -29,7 +29,16 @@ type fixedTimeProvider struct {
 
 func (f fixedTimeProvider) Now() time.Time { return f.value }
 
-func setupHandlerTest(t *testing.T) (*gorm.DB, *storage.AuthService, *storage.AccountService, *gin.Engine, time.Time) {
+type testEnv struct {
+	db             *gorm.DB
+	authService    *storage.AuthService
+	accountService *storage.AccountService
+	jwtService     *storage.JWTService
+	engine         *gin.Engine
+	frozen         time.Time
+}
+
+func setupHandlerTest(t *testing.T) *testEnv {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
@@ -47,15 +56,29 @@ func setupHandlerTest(t *testing.T) (*gorm.DB, *storage.AuthService, *storage.Ac
 
 	authService := storage.NewAuthService(db)
 	accountService := storage.NewAccountService(db, false)
+	jwtService := storage.NewJWTService("test-secret-key", 24*time.Hour)
 
 	frozen := time.Date(2025, time.November, 5, 12, 0, 0, 0, time.UTC)
 
 	engine := router.New(router.Dependencies{
-		Auth:    handlers.NewAuthHandler(authService),
-		Account: handlers.NewAccountHandler(accountService, fixedTimeProvider{value: frozen}),
+		Auth:       handlers.NewAuthHandler(authService, jwtService),
+		Account:    handlers.NewAccountHandler(accountService, fixedTimeProvider{value: frozen}),
+		JWTService: jwtService,
 	})
 
-	return db, authService, accountService, engine, frozen
+	return &testEnv{
+		db:             db,
+		authService:    authService,
+		accountService: accountService,
+		jwtService:     jwtService,
+		engine:         engine,
+		frozen:         frozen,
+	}
+}
+
+func (e *testEnv) authHeader(userID uint, email string) string {
+	token, _ := e.jwtService.GenerateToken(userID, email)
+	return "Bearer " + token
 }
 
 type incomeResponse struct {
@@ -82,11 +105,13 @@ type balanceResponse struct {
 }
 
 func TestAccountHandlerIncomeExpenseFlow(t *testing.T) {
-	_, authService, accountService, engine, frozen := setupHandlerTest(t)
+	env := setupHandlerTest(t)
 
 	ctx := context.Background()
-	user, err := authService.RegisterUser(ctx, "handler@example.com", "password123", "uah")
+	user, err := env.authService.RegisterUser(ctx, "handler@example.com", "password123", "uah")
 	require.NoError(t, err)
+
+	authHeader := env.authHeader(user.ID, user.Email)
 
 	t.Run("create income", func(t *testing.T) {
 		body, err := json.Marshal(map[string]any{
@@ -96,17 +121,18 @@ func TestAccountHandlerIncomeExpenseFlow(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/incomes", user.ID), bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/incomes", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", authHeader)
 		res := httptest.NewRecorder()
 
-		engine.ServeHTTP(res, req)
+		env.engine.ServeHTTP(res, req)
 		require.Equal(t, http.StatusCreated, res.Code)
 
 		var payload incomeResponse
 		require.NoError(t, json.Unmarshal(res.Body.Bytes(), &payload))
 		require.Equal(t, int64(10050), payload.BalanceCents)
-		require.Equal(t, frozen.Format(time.RFC3339), payload.ReceivedAt)
+		require.Equal(t, env.frozen.Format(time.RFC3339), payload.ReceivedAt)
 	})
 
 	t.Run("create expense", func(t *testing.T) {
@@ -116,11 +142,12 @@ func TestAccountHandlerIncomeExpenseFlow(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/expenses", user.ID), bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/expenses", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", authHeader)
 		res := httptest.NewRecorder()
 
-		engine.ServeHTTP(res, req)
+		env.engine.ServeHTTP(res, req)
 		require.Equal(t, http.StatusCreated, res.Code)
 
 		var payload expenseResponse
@@ -135,11 +162,12 @@ func TestAccountHandlerIncomeExpenseFlow(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/expenses", user.ID), bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/expenses", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", authHeader)
 		res := httptest.NewRecorder()
 
-		engine.ServeHTTP(res, req)
+		env.engine.ServeHTTP(res, req)
 		require.Equal(t, http.StatusBadRequest, res.Code)
 
 		var payload errorEnvelope
@@ -148,10 +176,11 @@ func TestAccountHandlerIncomeExpenseFlow(t *testing.T) {
 	})
 
 	t.Run("list incomes", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/incomes", user.ID), nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/incomes", nil)
+		req.Header.Set("Authorization", authHeader)
 		res := httptest.NewRecorder()
 
-		engine.ServeHTTP(res, req)
+		env.engine.ServeHTTP(res, req)
 		require.Equal(t, http.StatusOK, res.Code)
 
 		var payload []incomeListItem
@@ -161,10 +190,11 @@ func TestAccountHandlerIncomeExpenseFlow(t *testing.T) {
 	})
 
 	t.Run("balance endpoint", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/balance", user.ID), nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/balance", nil)
+		req.Header.Set("Authorization", authHeader)
 		res := httptest.NewRecorder()
 
-		engine.ServeHTTP(res, req)
+		env.engine.ServeHTTP(res, req)
 		require.Equal(t, http.StatusOK, res.Code)
 
 		var payload balanceResponse
@@ -173,16 +203,16 @@ func TestAccountHandlerIncomeExpenseFlow(t *testing.T) {
 	})
 
 	// ensure database state matches expectations
-	account, err := accountService.GetAccountByUserID(ctx, user.ID)
+	account, err := env.accountService.GetAccountByUserID(ctx, user.ID)
 	require.NoError(t, err)
 	require.Equal(t, int64(8050), account.BalanceCents)
 }
 
 func TestAccountHandlerCreateIncomeValidationError(t *testing.T) {
-	_, authService, _, engine, _ := setupHandlerTest(t)
+	env := setupHandlerTest(t)
 
 	ctx := context.Background()
-	user, err := authService.RegisterUser(ctx, "invalid-income@example.com", "password123", "uah")
+	user, err := env.authService.RegisterUser(ctx, "invalid-income@example.com", "password123", "uah")
 	require.NoError(t, err)
 
 	body, err := json.Marshal(map[string]any{
@@ -190,11 +220,12 @@ func TestAccountHandlerCreateIncomeValidationError(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/incomes", user.ID), bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/incomes", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", env.authHeader(user.ID, user.Email))
 	res := httptest.NewRecorder()
 
-	engine.ServeHTTP(res, req)
+	env.engine.ServeHTTP(res, req)
 	require.Equal(t, http.StatusBadRequest, res.Code)
 
 	var payload errorEnvelope
@@ -203,12 +234,14 @@ func TestAccountHandlerCreateIncomeValidationError(t *testing.T) {
 }
 
 func TestAccountHandlerGetBalanceNotFound(t *testing.T) {
-	_, _, _, engine, _ := setupHandlerTest(t)
+	env := setupHandlerTest(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/999/balance", nil)
+	// Generate token for non-existent user
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/balance", nil)
+	req.Header.Set("Authorization", env.authHeader(999, "nonexistent@example.com"))
 	res := httptest.NewRecorder()
 
-	engine.ServeHTTP(res, req)
+	env.engine.ServeHTTP(res, req)
 	require.Equal(t, http.StatusNotFound, res.Code)
 
 	var payload errorEnvelope
@@ -217,10 +250,10 @@ func TestAccountHandlerGetBalanceNotFound(t *testing.T) {
 }
 
 func TestAccountHandlerListIncomesRespectLimit(t *testing.T) {
-	_, authService, accountService, engine, frozen := setupHandlerTest(t)
+	env := setupHandlerTest(t)
 
 	ctx := context.Background()
-	user, err := authService.RegisterUser(ctx, "limit@example.com", "password123", "uah")
+	user, err := env.authService.RegisterUser(ctx, "limit@example.com", "password123", "uah")
 	require.NoError(t, err)
 
 	amounts := []int64{10000, 20000, 30000}
@@ -228,16 +261,17 @@ func TestAccountHandlerListIncomesRespectLimit(t *testing.T) {
 		income := &models.Income{
 			AmountCents: cents,
 			Source:      fmt.Sprintf("src-%d", i),
-			ReceivedAt:  frozen.Add(time.Duration(i) * time.Hour),
+			ReceivedAt:  env.frozen.Add(time.Duration(i) * time.Hour),
 		}
-		_, _, err := accountService.CreditIncome(ctx, user.ID, income)
+		_, _, err := env.accountService.CreditIncome(ctx, user.ID, income)
 		require.NoError(t, err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/incomes?limit=2", user.ID), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/incomes?limit=2", nil)
+	req.Header.Set("Authorization", env.authHeader(user.ID, user.Email))
 	res := httptest.NewRecorder()
 
-	engine.ServeHTTP(res, req)
+	env.engine.ServeHTTP(res, req)
 	require.Equal(t, http.StatusOK, res.Code)
 
 	var payload []struct {
@@ -250,13 +284,13 @@ func TestAccountHandlerListIncomesRespectLimit(t *testing.T) {
 }
 
 func TestAccountHandlerListExpensesRespectLimit(t *testing.T) {
-	_, authService, accountService, engine, frozen := setupHandlerTest(t)
+	env := setupHandlerTest(t)
 
 	ctx := context.Background()
-	user, err := authService.RegisterUser(ctx, "limit-expenses@example.com", "password123", "uah")
+	user, err := env.authService.RegisterUser(ctx, "limit-expenses@example.com", "password123", "uah")
 	require.NoError(t, err)
 
-	_, _, err = accountService.CreditIncome(ctx, user.ID, &models.Income{AmountCents: 100000, Source: "seed", ReceivedAt: frozen})
+	_, _, err = env.accountService.CreditIncome(ctx, user.ID, &models.Income{AmountCents: 100000, Source: "seed", ReceivedAt: env.frozen})
 	require.NoError(t, err)
 
 	costs := []int64{1000, 2000, 3000}
@@ -264,16 +298,17 @@ func TestAccountHandlerListExpensesRespectLimit(t *testing.T) {
 		expense := &models.Expense{
 			AmountCents: cents,
 			Category:    fmt.Sprintf("cat-%d", i),
-			IncurredAt:  frozen.Add(time.Duration(i) * time.Hour),
+			IncurredAt:  env.frozen.Add(time.Duration(i) * time.Hour),
 		}
-		_, _, err := accountService.DebitExpense(ctx, user.ID, expense)
+		_, _, err := env.accountService.DebitExpense(ctx, user.ID, expense)
 		require.NoError(t, err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/expenses?limit=2", user.ID), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/expenses?limit=2", nil)
+	req.Header.Set("Authorization", env.authHeader(user.ID, user.Email))
 	res := httptest.NewRecorder()
 
-	engine.ServeHTTP(res, req)
+	env.engine.ServeHTTP(res, req)
 	require.Equal(t, http.StatusOK, res.Code)
 
 	var payload []struct {

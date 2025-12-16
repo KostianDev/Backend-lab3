@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"bckndlab3/src/internal/http/middleware"
 	"bckndlab3/src/internal/http/requests"
 	"bckndlab3/src/internal/http/responses"
 	"bckndlab3/src/internal/services"
@@ -22,17 +23,19 @@ func NewAccountHandler(service *storage.AccountService, timeProvider services.Ti
 }
 
 func (h *AccountHandler) RegisterRoutes(router *gin.RouterGroup) {
-	router.POST("/:userID/incomes", h.CreateIncome)
-	router.POST("/:userID/expenses", h.CreateExpense)
-	router.GET("/:userID/balance", h.GetBalance)
-	router.GET("/:userID/incomes", h.ListIncomes)
-	router.GET("/:userID/expenses", h.ListExpenses)
+	router.POST("/incomes", h.CreateIncome)
+	router.POST("/expenses", h.CreateExpense)
+	router.GET("/balance", h.GetBalance)
+	router.GET("/incomes", h.ListIncomes)
+	router.GET("/expenses", h.ListExpenses)
 }
 
 func (h *AccountHandler) CreateIncome(c *gin.Context) {
-	userID, err := requests.ParseUintParam(c, "userID")
-	if err != nil {
-		c.Error(responses.NewValidationError(err))
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": "unauthorized", "message": "user not authenticated"},
+		})
 		return
 	}
 
@@ -53,9 +56,11 @@ func (h *AccountHandler) CreateIncome(c *gin.Context) {
 }
 
 func (h *AccountHandler) CreateExpense(c *gin.Context) {
-	userID, err := requests.ParseUintParam(c, "userID")
-	if err != nil {
-		c.Error(responses.NewValidationError(err))
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": "unauthorized", "message": "user not authenticated"},
+		})
 		return
 	}
 
@@ -76,9 +81,11 @@ func (h *AccountHandler) CreateExpense(c *gin.Context) {
 }
 
 func (h *AccountHandler) GetBalance(c *gin.Context) {
-	userID, err := requests.ParseUintParam(c, "userID")
-	if err != nil {
-		c.Error(responses.NewValidationError(err))
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": "unauthorized", "message": "user not authenticated"},
+		})
 		return
 	}
 
@@ -92,9 +99,11 @@ func (h *AccountHandler) GetBalance(c *gin.Context) {
 }
 
 func (h *AccountHandler) ListIncomes(c *gin.Context) {
-	userID, err := requests.ParseUintParam(c, "userID")
-	if err != nil {
-		c.Error(responses.NewValidationError(err))
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": "unauthorized", "message": "user not authenticated"},
+		})
 		return
 	}
 	limit := requests.ParseLimitQuery(c, "limit", 50)
@@ -115,9 +124,11 @@ func (h *AccountHandler) ListIncomes(c *gin.Context) {
 }
 
 func (h *AccountHandler) ListExpenses(c *gin.Context) {
-	userID, err := requests.ParseUintParam(c, "userID")
-	if err != nil {
-		c.Error(responses.NewValidationError(err))
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": "unauthorized", "message": "user not authenticated"},
+		})
 		return
 	}
 	limit := requests.ParseLimitQuery(c, "limit", 50)

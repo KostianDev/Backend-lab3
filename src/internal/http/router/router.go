@@ -7,12 +7,14 @@ import (
 
 	"bckndlab3/src/internal/http/handlers"
 	"bckndlab3/src/internal/http/middleware"
+	"bckndlab3/src/internal/storage"
 )
 
 // Dependencies groups handler dependencies for router setup.
 type Dependencies struct {
-	Auth    *handlers.AuthHandler
-	Account *handlers.AccountHandler
+	Auth       *handlers.AuthHandler
+	Account    *handlers.AccountHandler
+	JWTService *storage.JWTService
 }
 
 // New creates and configures the HTTP router.
@@ -27,9 +29,15 @@ func New(deps Dependencies) *gin.Engine {
 	api := engine.Group("/api/v1")
 
 	auth := api.Group("/auth")
-	deps.Auth.RegisterRoutes(auth)
+	deps.Auth.RegisterPublicRoutes(auth)
 
-	accounts := api.Group("/accounts")
+	protected := api.Group("")
+	protected.Use(middleware.JWTAuth(deps.JWTService))
+
+	protectedAuth := protected.Group("/auth")
+	deps.Auth.RegisterProtectedRoutes(protectedAuth)
+
+	accounts := protected.Group("/accounts")
 	deps.Account.RegisterRoutes(accounts)
 
 	return engine
