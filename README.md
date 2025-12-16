@@ -1,4 +1,4 @@
-# Backend Lab 3 – Income Tracking Service
+# Backend Lab 4 – Income Tracking Service
 
 This repository contains the third laboratory assignment for the "Технології серверного програмного забезпечення" course. The project is implemented in Go 1.25.3 with the Gin framework and PostgreSQL. Variant **3 (Облік доходів)** is selected, which introduces per-user income tracking and balance control.
 
@@ -11,6 +11,7 @@ This repository contains the third laboratory assignment for the "Техноло
   - [Running Locally](#running-locally)
   - [Running with Docker Compose](#running-with-docker-compose)
 - [Project Structure](#project-structure)
+- [Authentication](#authentication)
 - [Endpoints](#endpoints)
 - [Testing](#testing)
 - [Variant Justification](#variant-justification)
@@ -20,8 +21,9 @@ This repository contains the third laboratory assignment for the "Техноло
 ## Features
 - Gin-based HTTP API with request validation and structured error handling.
 - GORM ORM integration with PostgreSQL (runtime) and SQLite (tests).
+- JWT-based authentication protecting all endpoints except registration and login.
 - Authentication service creating users and default accounts with hashed passwords.
-- User deletion endpoint with cascading cleanup of accounts, incomes, and expenses.
+- User deletion endpoint via authenticated token (DELETE `/api/v1/auth/me`).
 - Account service that credits incomes, debits expenses, enforces optional overdraft policy, and tracks balances in cents.
 - Centralised error middleware translating domain errors to JSON envelopes.
 - Migrations managed via dedicated package executed on startup.
@@ -98,25 +100,42 @@ cp .env.docker.example .env
 └─ src/ ... (see Architecture Overview)
 ```
 
+## Authentication
+The API uses JWT (JSON Web Tokens) for authentication. After a successful login, include the returned token in subsequent requests via the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+Token configuration is controlled via environment variables:
+- `JWT_SECRET_KEY` – secret used to sign tokens (required).
+- `JWT_TOKEN_DURATION` – token validity period (default `24h`).
+
+Public endpoints (no token required):
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+
+All other endpoints require a valid JWT token.
+
 ## Endpoints
-| Method | Path                                  | Description                              |
-|--------|---------------------------------------|------------------------------------------|
-| GET    | `/healthz`                            | Liveness probe                           |
-| POST   | `/api/v1/auth/register`               | Register a new user                      |
-| POST   | `/api/v1/auth/login`                  | Authenticate user and return session token |
-| DELETE | `/api/v1/auth/{userID}`               | Delete a user (requires email/password in body) |
-| POST   | `/api/v1/accounts/{userID}/incomes`   | Credit an income to the user account     |
-| POST   | `/api/v1/accounts/{userID}/expenses`  | Debit an expense from the user account   |
-| GET    | `/api/v1/accounts/{userID}/balance`   | Retrieve current balance                 |
-| GET    | `/api/v1/accounts/{userID}/incomes`   | List incomes (optional `limit` query)    |
-| GET    | `/api/v1/accounts/{userID}/expenses`  | List expenses (optional `limit` query)   |
+| Method | Path                        | Auth | Description                              |
+|--------|-----------------------------|------|------------------------------------------|
+| GET    | `/healthz`                  | No   | Liveness probe                           |
+| POST   | `/api/v1/auth/register`     | No   | Register a new user                      |
+| POST   | `/api/v1/auth/login`        | No   | Authenticate user and return JWT token   |
+| DELETE | `/api/v1/auth/me`           | Yes  | Delete the authenticated user            |
+| POST   | `/api/v1/accounts/incomes`  | Yes  | Credit an income to the user account     |
+| POST   | `/api/v1/accounts/expenses` | Yes  | Debit an expense from the user account   |
+| GET    | `/api/v1/accounts/balance`  | Yes  | Retrieve current balance                 |
+| GET    | `/api/v1/accounts/incomes`  | Yes  | List incomes (optional `limit` query)    |
+| GET    | `/api/v1/accounts/expenses` | Yes  | List expenses (optional `limit` query)   |
 
 All payloads are documented in `internal/http/requests` and `internal/http/responses` packages.
 
 Example login response:
 ```json
 {
-   "token": "<random-hex>",
+   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
    "user": {
       "id": 1,
       "email": "user@example.com",
@@ -147,6 +166,8 @@ The service is deployed on [Render](https://render.com/) as a Web Service with a
 | `APP_NAME` | `backend-lab3` |
 | `GIN_MODE` | `release` |
 | `ALLOW_NEGATIVE_BALANCE` | `false` or `true` depending on desired policy |
+| `JWT_SECRET_KEY` | A strong random secret for signing tokens |
+| `JWT_TOKEN_DURATION` | `24h` (optional, defaults to 24 hours) |
 
 > Render automatically exposes `PORT`; the application reads `HTTP_PORT`, so set `HTTP_PORT` to `$PORT` in the environment. Ensure the Render service build command runs `go build ./src/cmd/app` (or use this repository's Dockerfile) and the start command executes `./app`.
 
@@ -154,7 +175,7 @@ The service is deployed on [Render](https://render.com/) as a Web Service with a
 - `go mod tidy` - ensure dependencies are up to date.
 - `docker compose logs -f app` - tail application logs.
 - `docker compose exec db psql -U ${DB_USER} -d ${DB_NAME}` - connect to the PostgreSQL instance.
-- `curl http://localhost:8080/api/v1/accounts/1/balance` - sample API call.
+- `curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/accounts/balance` - sample authenticated API call.
 - `go test ./src/internal/storage -run TestAccountService` - run targeted tests.
 
 ---
